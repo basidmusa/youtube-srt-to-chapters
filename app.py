@@ -4,22 +4,22 @@ import numpy as np
 import google.generativeai as genai
 from sentence_transformers import SentenceTransformer, util
 
-# --- App Setup & Models ---
-st.set_page_config(page_title="AI YouTube Chapter Creator", page_icon="🎬")
+# --- App Configuration ---
+st.set_page_config(page_title="AI YouTube Chapters Pro", page_icon="📝")
 
 @st.cache_resource
 def load_nlp_model():
     return SentenceTransformer('all-MiniLM-L6-v2')
 
 def get_ai_title(api_key, text_segment):
-    """Uses Gemini to generate a 3-5 word chapter title."""
+    """Generates a smart title using Gemini."""
     try:
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-1.5-flash')
-        prompt = f"Write a 3 to 5 word catchy YouTube chapter title for this transcript segment. Respond ONLY with the title:\n\n{text_segment[:2000]}"
+        prompt = f"Summarize this transcript segment into a 3-5 word catchy YouTube chapter title. Return ONLY the title:\n\n{text_segment[:2000]}"
         response = model.generate_content(prompt)
         return response.text.strip().replace('"', '')
-    except Exception:
+    except:
         return " ".join(text_segment.split()[:5]) + "..."
 
 def srt_time_to_yt(srt_time):
@@ -34,16 +34,16 @@ def parse_srt(content):
     texts = [m[1].replace('\n', ' ').strip() for m in matches]
     return times, texts
 
-# --- Sidebar Configuration ---
-st.sidebar.header("🔑 API Configuration")
-api_key = st.sidebar.text_input("Enter Gemini API Key", type="password")
-st.sidebar.info("Get a free key at aistudio.google.com")
+# --- Sidebar ---
+st.sidebar.header("Settings")
+api_key = st.sidebar.text_input("Gemini API Key", type="password")
+st.sidebar.markdown("[Get a free key here](https://aistudio.google.com/)")
 
 # --- Main UI ---
-st.title("🎬 AI Smart Chapters")
-st.write("Upload an SRT and let AI find the topic changes and name them.")
+st.title("📝 AI YouTube Chapter Generator")
+st.info("Upload your SRT, and I'll find the topics and name them for you.")
 
-uploaded_file = st.file_uploader("Upload SRT", type="srt")
+uploaded_file = st.file_uploader("Upload SRT File", type="srt")
 
 if uploaded_file:
     content = uploaded_file.getvalue().decode("utf-8")
@@ -51,15 +51,15 @@ if uploaded_file:
     
     col1, col2 = st.columns(2)
     with col1:
-        sensitivity = st.slider("Topic Shift Sensitivity", 0.1, 0.8, 0.45)
+        sensitivity = st.slider("Topic Detection Sensitivity", 0.1, 0.8, 0.45, help="Lower = more frequent changes.")
     with col2:
-        min_gap = st.number_input("Min. lines per chapter", value=20)
+        min_gap = st.number_input("Minimum lines per chapter", value=20)
 
-    if st.button("✨ Generate AI Chapters"):
+    if st.button("🚀 Generate Smart Chapters"):
         if not api_key:
-            st.error("Please enter an API key in the sidebar first!")
+            st.error("Please add your Gemini API Key in the sidebar!")
         else:
-            with st.spinner("Analyzing topics and writing titles..."):
+            with st.spinner("Analyzing themes and writing titles..."):
                 nlp_model = load_nlp_model()
                 embeddings = nlp_model.encode(texts, convert_to_tensor=True)
                 
@@ -71,17 +71,23 @@ if uploaded_file:
                     next_v = embeddings[i:i+min_gap].mean(dim=0)
                     similarity = util.cos_sim(prev, next_v).item()
                     
-                    # If topic shift detected OR it's the very first line
                     if (similarity < sensitivity and (i - last_idx) > min_gap) or i == min_gap:
                         ts = "00:00" if i == min_gap else srt_time_to_yt(times[i])
-                        
-                        # Grab the next 30 lines of text to give the AI context for the title
-                        context_chunk = " ".join(texts[i : i+30])
+                        context_chunk = " ".join(texts[i : i+35])
                         title = get_ai_title(api_key, context_chunk)
-                        
                         chapters.append(f"{ts} {title}")
                         last_idx = i
 
-                st.subheader("Copy to YouTube Description")
-                st.text_area("Timestamps:", value="\n".join(chapters), height=300)
-                st.balloons()
+                # Final Output
+                result_text = "\n".join(chapters)
+                st.subheader("Results")
+                st.text_area("YouTube Ready Format:", value=result_text, height=300)
+                
+                # --- DOWNLOAD BUTTON ---
+                st.download_button(
+                    label="💾 Download as Text File",
+                    data=result_text,
+                    file_name="youtube_chapters.txt",
+                    mime="text/plain"
+                )
+                st.success("All set! Just copy-paste these into your video description.")
